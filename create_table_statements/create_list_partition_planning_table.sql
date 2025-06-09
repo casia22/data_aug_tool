@@ -1,0 +1,68 @@
+CREATE TABLE `决策规划表_list` (
+  `vehicle_vin_code` int NOT NULL,
+  `data_type` varchar(50) DEFAULT NULL,
+  `data_date` date NOT NULL,
+  `create_time` datetime DEFAULT NULL,
+  `timestamp` varchar(30) NOT NULL,
+  `turn_light` varchar(20) DEFAULT NULL,
+  `hazard_light` varchar(20) DEFAULT NULL,
+  `p_id` int NOT NULL,
+  `x` double DEFAULT NULL,
+  `y` double DEFAULT NULL,
+  `z` double DEFAULT NULL,
+  `o_x` double DEFAULT NULL,
+  `o_y` double DEFAULT NULL,
+  `o_z` double DEFAULT NULL,
+  `o_w` double DEFAULT NULL,
+  `longitudinal_velocity_mps` double DEFAULT NULL,
+  `lateral_velocity_mps` double DEFAULT NULL,
+  `acceleration_mps2` double DEFAULT NULL,
+  `heading_rate_rps` double DEFAULT NULL,
+  `front_wheel_angle_rad` double DEFAULT NULL,
+  PRIMARY KEY (`timestamp`,`p_id`,`data_date`),
+  KEY `idx_date` (`data_date`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+PARTITION BY LIST (TO_DAYS(data_date)) (
+    PARTITION p202501 VALUES IN (
+        TO_DAYS('2025-01-01'), TO_DAYS('2025-01-02'), TO_DAYS('2025-01-03'), TO_DAYS('2025-01-04'),
+        TO_DAYS('2025-01-05'), TO_DAYS('2025-01-06'), TO_DAYS('2025-01-07'), TO_DAYS('2025-01-08'),
+        TO_DAYS('2025-01-09'), TO_DAYS('2025-01-10'), TO_DAYS('2025-01-11'), TO_DAYS('2025-01-12'),
+        TO_DAYS('2025-01-13'), TO_DAYS('2025-01-14'), TO_DAYS('2025-01-15'), TO_DAYS('2025-01-16'),
+        TO_DAYS('2025-01-17'), TO_DAYS('2025-01-18'), TO_DAYS('2025-01-19'), TO_DAYS('2025-01-20'),
+        TO_DAYS('2025-01-21'), TO_DAYS('2025-01-22'), TO_DAYS('2025-01-23'), TO_DAYS('2025-01-24'),
+        TO_DAYS('2025-01-25'), TO_DAYS('2025-01-26'), TO_DAYS('2025-01-27'), TO_DAYS('2025-01-28'),
+        TO_DAYS('2025-01-29'), TO_DAYS('2025-01-30'), TO_DAYS('2025-01-31')
+    ),
+    PARTITION p202502 VALUES IN (
+        TO_DAYS('2025-02-01'), TO_DAYS('2025-02-02'), TO_DAYS('2025-02-03'), TO_DAYS('2025-02-04'),
+        TO_DAYS('2025-02-05'), TO_DAYS('2025-02-06'), TO_DAYS('2025-02-07'), TO_DAYS('2025-02-08'),
+        TO_DAYS('2025-02-09'), TO_DAYS('2025-02-10'), TO_DAYS('2025-02-11'), TO_DAYS('2025-02-12'),
+        TO_DAYS('2025-02-13'), TO_DAYS('2025-02-14'), TO_DAYS('2025-02-15'), TO_DAYS('2025-02-16'),
+        TO_DAYS('2025-02-17'), TO_DAYS('2025-02-18'), TO_DAYS('2025-02-19'), TO_DAYS('2025-02-20'),
+        TO_DAYS('2025-02-21'), TO_DAYS('2025-02-22'), TO_DAYS('2025-02-23'), TO_DAYS('2025-02-24'),
+        TO_DAYS('2025-02-25'), TO_DAYS('2025-02-26'), TO_DAYS('2025-02-27'), TO_DAYS('2025-02-28')
+    ),
+    PARTITION p202503 VALUES IN (
+        TO_DAYS('2025-03-01'), TO_DAYS('2025-03-02'), TO_DAYS('2025-03-03'), TO_DAYS('2025-03-04'),
+        TO_DAYS('2025-03-05'), TO_DAYS('2025-03-06'), TO_DAYS('2025-03-07'), TO_DAYS('2025-03-08'),
+        TO_DAYS('2025-03-09'), TO_DAYS('2025-03-10'), TO_DAYS('2025-03-11'), TO_DAYS('2025-03-12'),
+        TO_DAYS('2025-03-13'), TO_DAYS('2025-03-14'), TO_DAYS('2025-03-15'), TO_DAYS('2025-03-16'),
+        TO_DAYS('2025-03-17'), TO_DAYS('2025-03-18'), TO_DAYS('2025-03-19'), TO_DAYS('2025-03-20'),
+        TO_DAYS('2025-03-21'), TO_DAYS('2025-03-22'), TO_DAYS('2025-03-23'), TO_DAYS('2025-03-24'),
+        TO_DAYS('2025-03-25'), TO_DAYS('2025-03-26'), TO_DAYS('2025-03-27'), TO_DAYS('2025-03-28'),
+        TO_DAYS('2025-03-29'), TO_DAYS('2025-03-30'), TO_DAYS('2025-03-31')
+    ),
+    PARTITION p202504 VALUES IN (
+        TO_DAYS('2025-04-01'), TO_DAYS('2025-04-02'), TO_DAYS('2025-04-03'), TO_DAYS('2025-04-04'),
+        TO_DAYS('2025-04-05'), TO_DAYS('2025-04-06'), TO_DAYS('2025-04-07'), TO_DAYS('2025-04-08'),
+        TO_DAYS('2025-04-09'), TO_DAYS('2025-04-10'), TO_DAYS('2025-04-11'), TO_DAYS('2025-04-12'),
+        TO_DAYS('2025-04-13'), TO_DAYS('2025-04-14'), TO_DAYS('2025-04-15'), TO_DAYS('2025-04-16'),
+        TO_DAYS('2025-04-17'), TO_DAYS('2025-04-18'), TO_DAYS('2025-04-19'), TO_DAYS('2025-04-20'),
+        TO_DAYS('2025-04-21'), TO_DAYS('2025-04-22'), TO_DAYS('2025-04-23'), TO_DAYS('2025-04-24'),
+        TO_DAYS('2025-04-25'), TO_DAYS('2025-04-26'), TO_DAYS('2025-04-27'), TO_DAYS('2025-04-28'),
+        TO_DAYS('2025-04-29'), TO_DAYS('2025-04-30')
+    ),
+    PARTITION p202505 VALUES IN (
+        TO_DAYS('2025-05-01')
+    )
+); 
