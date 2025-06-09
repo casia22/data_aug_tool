@@ -1,0 +1,654 @@
+<!-- templates/index.html -->
+<!doctype html>
+<html lang="zh">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Pingtan 定位表数据统计</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            padding-top: 20px;
+            background-color: #f8f9fa;
+        }
+        .container {
+            max-width: 1200px;
+            background-color: #ffffff;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #343a40;
+            margin-bottom: 25px;
+            text-align: center;
+            border-bottom: 1px solid #dee2e6;
+            padding-bottom: 15px;
+        }
+        .table thead th {
+             background-color: #007bff;
+             color: white;
+             position: sticky; /* Make header sticky */
+             top: 0; /* Stick to the top */
+             z-index: 10;
+             white-space: nowrap; /* Prevent wrapping */
+        }
+        .table-responsive {
+            max-height: 70vh; /* Limit table height and enable scroll */
+            overflow-y: auto;
+        }
+        .alert {
+            margin-top: 20px;
+        }
+        .date-link {
+            color: #007bff;
+            text-decoration: none; /* Remove underline by default */
+            cursor: pointer;
+        }
+        .date-link:hover {
+            color: #0056b3;
+            text-decoration: underline; /* Add underline on hover */
+        }
+        .text-number {
+            text-align: right;
+            font-family: monospace;
+        }
+        /* Apply text alignment for duration columns */
+        .table td:nth-child(5), 
+        .table td:nth-child(6) {
+            text-align: right;
+            font-family: monospace;
+        }
+        .controls {
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .stats-card {
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 15px;
+            display: none;
+        }
+        .segments-list {
+            max-height: 200px;
+            overflow-y: auto;
+            margin-top: 10px;
+        }
+        .segment-item {
+            padding: 5px 0;
+            border-bottom: 1px solid #eee;
+        }
+        .spinner-border {
+            width: 1rem;
+            height: 1rem;
+            margin-right: 5px;
+        }
+        .calculating {
+            color: #6c757d;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Pingtan 定位表 - 日期统计</h1>
+
+        <div class="controls">
+            <div>
+                <h5>基本统计数据</h5>
+                <p class="text-muted small">显示每个日期的记录数量和时间范围</p>
+            </div>
+            <div>
+                <button id="calculate-stats-btn" class="btn btn-primary">
+                    计算详细统计
+                </button>
+                <div class="form-check form-check-inline ms-2">
+                    <input class="form-check-input" type="checkbox" id="show-segments" checked>
+                    <label class="form-check-label" for="show-segments">显示段落详情</label>
+                </div>
+            </div>
+        </div>
+
+        {% if error %}
+            <div class="alert alert-danger" role="alert">
+                <strong>错误:</strong> {{ error }}
+            </div>
+        {% endif %}
+
+        {% if results %}
+            <div class="table-responsive">
+                <table class="table table-striped table-hover table-bordered" id="data-table">
+                    <thead class="table-primary">
+                        <tr>
+                            <th scope="col">日期</th>
+                            <th scope="col">记录数量</th>
+                            <th scope="col">开始时间</th>
+                            <th scope="col">结束时间</th>
+                            <th scope="col">时长(小时)</th>
+                            <!-- 高级统计列 - 初始不显示 -->
+                            <th scope="col" class="advanced-col" style="display:none">总时长(最大-最小)</th>
+                            <th scope="col" class="advanced-col" style="display:none">真实录制时长</th>
+                            <th scope="col" class="advanced-col" style="display:none">数据段数</th>
+                            <th scope="col" class="advanced-col" style="display:none">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in results %}
+                            <tr data-date="{{ row['日期'] }}">
+                                <td><a href="{{ url_for('track_visualization', date=row['日期']) }}" class="date-link">{{ row['日期'] }}</a></td>
+                                <td class="text-number">{{ '{:,}'.format(row['记录数量']) }}</td>
+                                <td>{{ row['开始时间'] }}</td>
+                                <td>{{ row['结束时间'] }}</td>
+                                <td class="text-number">{{ row['时长(小时)'] }}</td>
+                                <!-- 高级统计列 - 初始为空 -->
+                                <td class="advanced-col" style="display:none" data-stat="total-duration">--</td>
+                                <td class="advanced-col" style="display:none" data-stat="real-duration">--</td>
+                                <td class="advanced-col" style="display:none" data-stat="segment-count">--</td>
+                                <td class="advanced-col" style="display:none">
+                                    <button class="btn btn-sm btn-outline-secondary show-segments-btn">
+                                        查看段落
+                                    </button>
+                                </td>
+                            </tr>
+                            <!-- 添加隐藏的段落详情行 -->
+                            <tr class="segment-details-row" style="display:none">
+                                <td colspan="9">
+                                    <div class="stats-card">
+                                        <h6>段落详情</h6>
+                                        <div class="segments-list">
+                                            <div class="text-center py-3 calculating">
+                                                <div class="spinner-border" role="status">
+                                                    <span class="visually-hidden">Loading...</span>
+                                                </div>
+                                                计算中...
+                                            </div>
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% elif not error %}
+            <div class="alert alert-info" role="alert">
+                未查询到数据。
+            </div>
+        {% endif %}
+    </div>
+
+    <!-- Bootstrap Bundle with Popper -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Add JavaScript for Advanced Stats -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const calculateBtn = document.getElementById('calculate-stats-btn');
+            const showSegmentsCheckbox = document.getElementById('show-segments');
+            const advancedCols = document.querySelectorAll('.advanced-col');
+            const dataTable = document.getElementById('data-table');
+            let statsData = null; // 保存计算结果
+            
+            // "计算详细统计"按钮点击事件
+            calculateBtn.addEventListener('click', function() {
+                // 如果已经计算过，直接显示结果
+                if (statsData) {
+                    showAdvancedColumns();
+                    return;
+                }
+                
+                // 否则开始计算
+                calculateBtn.disabled = true;
+                calculateBtn.innerHTML = '<span class="spinner-border"></span> 计算中...';
+                
+                // 获取所有日期
+                const dates = [];
+                document.querySelectorAll('tr[data-date]').forEach(row => {
+                    dates.push(row.dataset.date);
+                });
+                
+                // 发送请求到API
+                fetch('/api/calculate_advanced_stats', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        dates: dates,
+                        gap_threshold: 60 // 可以根据需要调整
+                    }),
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        alert('计算错误: ' + data.error);
+                        return;
+                    }
+                    
+                    // 保存结果
+                    statsData = data.results;
+                    
+                    // 显示结果
+                    showAdvancedColumns();
+                    updateTableWithStats();
+                    
+                    // 重置按钮
+                    calculateBtn.disabled = false;
+                    calculateBtn.innerHTML = '计算详细统计';
+                    calculateBtn.classList.remove('btn-primary');
+                    calculateBtn.classList.add('btn-success');
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('请求失败: ' + error.message);
+                    calculateBtn.disabled = false;
+                    calculateBtn.innerHTML = '重试计算';
+                });
+            });
+            
+            // 显示高级统计列
+            function showAdvancedColumns() {
+                advancedCols.forEach(col => {
+                    col.style.display = '';
+                });
+            }
+            
+            // 使用计算结果更新表格
+            function updateTableWithStats() {
+                // 对每个日期行更新统计数据
+                document.querySelectorAll('tr[data-date]').forEach(row => {
+                    const date = row.dataset.date;
+                    if (statsData && statsData[date]) {
+                        const stats = statsData[date];
+                        
+                        // 更新单元格
+                        row.querySelector('[data-stat="total-duration"]').textContent = 
+                            stats['总时长(最大-最小)'] || '--';
+                        row.querySelector('[data-stat="real-duration"]').textContent = 
+                            stats['真实录制时长'] || '--';
+                        row.querySelector('[data-stat="segment-count"]').textContent = 
+                            stats['数据段数'] || '--';
+                    }
+                });
+                
+                // 绑定"查看段落"按钮事件
+                document.querySelectorAll('.show-segments-btn').forEach(btn => {
+                    btn.addEventListener('click', function() {
+                        const row = this.closest('tr');
+                        const date = row.dataset.date;
+                        const detailsRow = row.nextElementSibling;
+                        
+                        // 切换详情可见性
+                        if (detailsRow.style.display === 'none') {
+                            detailsRow.style.display = '';
+                            detailsRow.querySelector('.stats-card').style.display = 'block';
+                            
+                            // 如果还没有渲染段落，则渲染
+                            const segmentsList = detailsRow.querySelector('.segments-list');
+                            if (segmentsList.querySelector('.calculating')) {
+                                renderSegments(date, segmentsList);
+                            }
+                        } else {
+                            detailsRow.style.display = 'none';
+                        }
+                    });
+                });
+            }
+            
+            // 渲染段落详情
+            function renderSegments(date, container) {
+                if (!statsData || !statsData[date] || !statsData[date].segments) {
+                    container.innerHTML = '<div class="alert alert-warning">无段落数据</div>';
+                    return;
+                }
+                
+                const segments = statsData[date].segments;
+                
+                // 清空容器
+                container.innerHTML = '';
+                
+                // 创建段落列表
+                if (segments.length === 0) {
+                    container.innerHTML = '<div class="alert alert-info">没有识别到数据段落</div>';
+                    return;
+                }
+                
+                // 创建表格
+                const table = document.createElement('table');
+                table.className = 'table table-sm';
+                table.id = 'segmentsTable';
+                table.innerHTML = `
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>开始时间</th>
+                            <th>结束时间</th>
+                            <th>持续时间</th>
+                            <th>数据点数</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                `;
+                
+                const tbody = table.querySelector('tbody');
+                
+                // 添加行
+                segments.forEach((segment, index) => {
+                    const row = document.createElement('tr');
+                    row.dataset.index = index;
+                    row.dataset.startTime = segment.start_time;
+                    row.dataset.endTime = segment.end_time;
+                    row.dataset.duration = segment.duration;
+                    row.innerHTML = `
+                        <td>${index + 1}</td>
+                        <td>${segment.start_time}</td>
+                        <td>${segment.end_time}</td>
+                        <td>${segment.duration}</td>
+                        <td>${segment.points}</td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-primary add-segment-btn" title="增加此段数据">+</button>
+                            <button class="btn btn-sm btn-outline-danger delete-segment-btn" title="删除此段数据">🗑️</button>
+                        </td>
+                    `;
+                    tbody.appendChild(row);
+                });
+                
+                container.appendChild(table);
+            }
+            
+            // "显示段落详情"复选框事件
+            showSegmentsCheckbox.addEventListener('change', function() {
+                const detailsRows = document.querySelectorAll('.segment-details-row');
+                detailsRows.forEach(row => {
+                    if (row.style.display !== 'none') {
+                        row.style.display = this.checked ? '' : 'none';
+                    }
+                });
+            });
+            
+            // --- 数据扩增相关函数 ---
+            
+            // 添加事件委托，处理段落表格中的按钮点击
+            document.addEventListener('click', function(event) {
+                // 处理增加按钮点击
+                if (event.target.classList.contains('add-segment-btn')) {
+                    handleAddSegment(event.target);
+                }
+                
+                // 处理删除按钮点击
+                if (event.target.classList.contains('delete-segment-btn')) {
+                    handleDeleteSegment(event.target);
+                }
+                
+                // 处理保存新段落按钮点击
+                if (event.target.classList.contains('save-new-segment-btn')) {
+                    handleSaveNewSegment(event.target);
+                }
+                
+                // 处理取消新段落按钮点击
+                if (event.target.classList.contains('cancel-new-segment-btn')) {
+                    event.target.closest('tr').remove();
+                }
+            });
+            
+            // 处理段落开始时间输入框变化
+            document.addEventListener('change', function(event) {
+                if (event.target.classList.contains('edit-start-time')) {
+                    updateNewSegmentEndTime(event.target);
+                }
+            });
+            
+            // 处理增加段落
+            function handleAddSegment(button) {
+                const row = button.closest('tr');
+                const dateRow = findDateRow(row);
+                if (!dateRow) {
+                    alert('无法确定日期信息');
+                    return;
+                }
+                
+                const date = dateRow.dataset.date;
+                const startTime = row.dataset.startTime;
+                const endTime = row.dataset.endTime;
+                const duration = row.dataset.duration;
+                
+                // 创建新行
+                const newRow = document.createElement('tr');
+                newRow.className = 'new-segment-row';
+                newRow.dataset.originalStart = startTime;
+                newRow.dataset.originalEnd = endTime;
+                newRow.dataset.duration = duration;
+                newRow.dataset.date = date;
+                
+                // 计算持续时间（秒）
+                const durationParts = duration.split(':');
+                const durationSeconds = parseInt(durationParts[0]) * 3600 + 
+                                       parseInt(durationParts[1]) * 60 + 
+                                       parseInt(durationParts[2]);
+                newRow.dataset.durationSeconds = durationSeconds;
+                
+                // 创建新行内容
+                newRow.innerHTML = `
+                    <td><span class="badge bg-info">新</span></td>
+                    <td><input type="time" class="form-control form-control-sm edit-start-time" value="${startTime}" step="1"></td>
+                    <td>${endTime}</td>
+                    <td>${duration}</td>
+                    <td><input type="number" class="form-control form-control-sm copy-count" value="1" min="1" max="10" title="复制次数"></td>
+                    <td>
+                        <button class="btn btn-sm btn-success save-new-segment-btn">保存</button>
+                        <button class="btn btn-sm btn-secondary cancel-new-segment-btn">取消</button>
+                    </td>
+                `;
+                
+                // 插入新行
+                row.after(newRow);
+                newRow.querySelector('.edit-start-time').focus();
+            }
+            
+            // 处理删除段落
+            function handleDeleteSegment(button) {
+                const row = button.closest('tr');
+                const dateRow = findDateRow(row);
+                if (!dateRow) {
+                    alert('无法确定日期信息');
+                    return;
+                }
+                
+                const date = dateRow.dataset.date;
+                const startTime = row.dataset.startTime;
+                const endTime = row.dataset.endTime;
+                
+                if (!confirm(`确定要删除 ${date} ${startTime}-${endTime} 的所有数据吗？\n此操作将影响所有相关数据表，且无法撤销。`)) {
+                    return;
+                }
+                
+                // 显示加载指示器
+                button.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+                button.disabled = true;
+                
+                // 发送删除请求
+                fetch('/delete_data', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        date: date,
+                        start_time: startTime,
+                        end_time: endTime
+                    }),
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert('数据删除成功！');
+                        // 刷新页面以显示更新后的数据
+                        location.reload();
+                    } else {
+                        alert('删除失败: ' + (data.error || '未知错误'));
+                        // 恢复按钮状态
+                        button.innerHTML = '🗑️';
+                        button.disabled = false;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('删除请求失败: ' + error.message);
+                    // 恢复按钮状态
+                    button.innerHTML = '🗑️';
+                    button.disabled = false;
+                });
+            }
+            
+            // 处理保存新段落
+            function handleSaveNewSegment(button) {
+                const row = button.closest('tr');
+                const dateRow = findDateRow(row);
+                if (!dateRow) {
+                    alert('无法确定日期信息');
+                    return;
+                }
+                
+                const date = row.dataset.date;
+                const originalStartTime = row.dataset.originalStart;
+                const originalEndTime = row.dataset.originalEnd;
+                const newStartTime = row.querySelector('.edit-start-time').value;
+                const copyCount = parseInt(row.querySelector('.copy-count').value) || 1;
+                
+                if (!newStartTime) {
+                    alert('请输入新的开始时间');
+                    return;
+                }
+                
+                if (copyCount < 1 || copyCount > 10) {
+                    alert('复制次数必须在1-10之间');
+                    return;
+                }
+                
+                // 计算时间差（秒）
+                const timeDeltaSeconds = calculateTimeDelta(originalStartTime, newStartTime);
+                
+                // 显示加载指示器
+                button.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+                button.disabled = true;
+                
+                // 创建一个计数器来跟踪完成的复制次数
+                let completedCopies = 0;
+                let successfulCopies = 0;
+                
+                // 递归函数来处理每一次复制
+                function processCopy(copyIndex) {
+                    if (copyIndex >= copyCount) {
+                        // 所有复制都完成了
+                        if (successfulCopies > 0) {
+                            alert(`数据扩增成功！完成了 ${successfulCopies} 次复制。`);
+                            location.reload();
+                        } else {
+                            alert('扩增失败：所有复制操作都未成功');
+                            button.innerHTML = '保存';
+                            button.disabled = false;
+                        }
+                        return;
+                    }
+                    
+                    // 计算当前复制的时间差
+                    const currentTimeDelta = timeDeltaSeconds + (copyIndex * parseInt(row.dataset.durationSeconds));
+                    
+                    // 发送扩增请求
+                    fetch('/augment_data', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            date: date,
+                            original_start_time: originalStartTime,
+                            original_end_time: originalEndTime,
+                            time_delta_seconds: currentTimeDelta
+                        }),
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        completedCopies++;
+                        
+                        if (data.success) {
+                            successfulCopies++;
+                            console.log(`复制 ${copyIndex + 1}/${copyCount} 成功`);
+                        } else {
+                            console.error(`复制 ${copyIndex + 1}/${copyCount} 失败: ${data.error}`);
+                        }
+                        
+                        // 处理下一次复制
+                        processCopy(copyIndex + 1);
+                    })
+                    .catch(error => {
+                        console.error(`复制 ${copyIndex + 1}/${copyCount} 出错:`, error);
+                        completedCopies++;
+                        // 继续处理下一次复制
+                        processCopy(copyIndex + 1);
+                    });
+                }
+                
+                // 开始处理第一次复制
+                processCopy(0);
+            }
+            
+            // 更新新段落的结束时间
+            function updateNewSegmentEndTime(inputElement) {
+                const row = inputElement.closest('tr');
+                const newStartTime = inputElement.value;
+                const durationSeconds = parseInt(row.dataset.durationSeconds);
+                
+                if (newStartTime && !isNaN(durationSeconds)) {
+                    const newEndTime = addSecondsToTime(newStartTime, durationSeconds);
+                    row.cells[2].textContent = newEndTime;
+                }
+            }
+            
+            // 查找包含日期信息的行
+            function findDateRow(segmentRow) {
+                // 向上遍历DOM树，寻找包含data-date属性的行
+                let currentRow = segmentRow;
+                while (currentRow) {
+                    if (currentRow.classList.contains('segment-details-row')) {
+                        // 上一行应该是日期行
+                        return currentRow.previousElementSibling;
+                    }
+                    // 从段落详情表格内向上遍历到段落详情行
+                    if (currentRow.parentElement && 
+                        currentRow.parentElement.parentElement && 
+                        currentRow.parentElement.parentElement.classList.contains('segment-details-row')) {
+                        // 找到了段落详情行，再往上一行就是日期行
+                        return currentRow.parentElement.parentElement.previousElementSibling;
+                    }
+                    currentRow = currentRow.parentElement;
+                }
+                return null;
+            }
+            
+            // 计算两个时间字符串之间的秒数差异
+            function calculateTimeDelta(originalTimeStr, newTimeStr) {
+                // 假设格式为 HH:MM:SS
+                const today = new Date().toISOString().split('T')[0]; // 使用今天的日期计算
+                const originalDate = new Date(`${today}T${originalTimeStr}`);
+                const newDate = new Date(`${today}T${newTimeStr}`);
+                return Math.round((newDate - originalDate) / 1000); // 差异秒数
+            }
+            
+            // 在时间字符串上增加指定秒数
+            function addSecondsToTime(timeStr, seconds) {
+                // 假设格式为 HH:MM:SS
+                const today = new Date().toISOString().split('T')[0]; // 使用今天的日期计算
+                const date = new Date(`${today}T${timeStr}`);
+                date.setSeconds(date.getSeconds() + seconds);
+                return date.toTimeString().split(' ')[0]; // 返回 HH:MM:SS 格式
+            }
+        });
+    </script>
+</body>
+</html>

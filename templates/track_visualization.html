@@ -1,0 +1,988 @@
+<!doctype html>
+<html lang="zh">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Pingtan 轨迹可视化 - {{ date }}</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <!-- noUiSlider CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/nouislider@14.6.3/distribute/nouislider.min.css">
+    <style>
+        body {
+            padding: 0;
+            margin: 0;
+            background-color: #f8f9fa;
+        }
+        .container-fluid {
+            padding: 20px;
+        }
+        #map {
+            height: 75vh;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            position: relative; /* Needed for absolute positioning of position-info */
+        }
+        h1 {
+            color: #343a40;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #dee2e6;
+        }
+        .controls-container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-top: 20px;
+        }
+        #time-slider {
+            margin: 35px 10px 20px 10px; /* Increased top margin for pips */
+            height: 15px;
+        }
+        #time-display {
+            text-align: center;
+            font-size: 18px;
+            margin: 15px 0;
+        }
+        .control-label {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .time-tooltip {
+            display: block;
+            position: absolute;
+            background: white;
+            color: #333;
+            padding: 5px 10px;
+            border-radius: 5px;
+            box-shadow: 0 0 5px rgba(0,0,0,0.2);
+            pointer-events: none;
+            z-index: 1000;
+        }
+        .back-link {
+            margin-bottom: 20px;
+        }
+        .debug-info {
+            background-color: #f8f9fa;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-top: 15px;
+            font-size: 14px;
+        }
+        .position-info {
+            margin-top: 10px;
+            background-color: rgba(255, 255, 255, 0.8);
+            border-radius: 4px;
+            padding: 8px 12px;
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 1000; /* Ensure it's above map tiles but below controls */
+            font-size: 14px;
+            box-shadow: 0 1px 5px rgba(0,0,0,0.2);
+        }
+        .position-label {
+            font-weight: bold;
+            margin-right: 5px;
+        }
+        .coord-value {
+            font-family: monospace;
+        }
+        .speed-controls {
+            display: flex;
+            align-items: center;
+            margin-top: 10px;
+        }
+        .speed-label {
+            margin-right: 10px;
+            font-weight: bold;
+        }
+        .speed-selector {
+            display: flex;
+        }
+        .speed-option {
+            cursor: pointer;
+            padding: 5px 12px;
+            background: #f0f0f0;
+            border: 1px solid #ddd;
+            text-align: center;
+        }
+        .speed-option:first-child {
+            border-radius: 4px 0 0 4px;
+        }
+        .speed-option:last-child {
+            border-radius: 0 4px 4px 0;
+        }
+        .speed-option.active {
+            background-color: #007bff;
+            color: white;
+            border-color: #0062cc;
+        }
+        /* Slider Pips Styling */
+        .noUi-pips {
+            position: absolute;
+            color: #999;
+        }
+        .noUi-pips-horizontal {
+            padding: 10px 0;
+            height: 80px;
+            top: -20px; /* Adjust to position above slider */
+            left: 0;
+            width: 100%;
+        }
+        .noUi-marker {
+            position: absolute;
+            background: #ccc;
+        }
+        .noUi-marker-horizontal {
+            width: 1px;
+            height: 8px; /* Height of the pip mark */
+            top: 0;
+        }
+        .noUi-value {
+            position: absolute;
+            white-space: nowrap;
+            text-align: center;
+            font-size: 10px; /* Smaller font for pip values */
+             top: -15px; /* Position value above the mark */
+             transform: translate(-50%, -50%);
+        }
+        .noUi-marker-normal[style^="left: 0"] .noUi-value,
+        .noUi-marker-normal[style^="left: 100"] .noUi-value {
+             /* Hide first and last generic pips if they overlap */
+             /* display: none; */
+        }
+        .noUi-marker-large {
+            background: #aaa;
+             height: 12px; /* Make segment markers slightly larger */
+        }
+
+        /* Playback progress info */
+        .playback-info {
+            margin-top: 10px;
+            padding: 5px 10px;
+            background-color: #e9ecef;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="row mb-3">
+            <div class="col">
+                <a href="{{ url_for('index') }}" class="btn btn-outline-primary back-link">← 返回列表</a>
+                <h1>{{ date }} 轨迹可视化</h1>
+            </div>
+        </div>
+
+        {% if error %}
+            <div class="alert alert-danger" role="alert">
+                <strong>错误:</strong> {{ error }}
+            </div>
+        {% endif %}
+        
+        <div class="row">
+            <div class="col-12">
+                <div id="map">
+                    <div class="position-info" id="position-info">
+                        <div><span class="position-label">经度:</span> <span id="longitude" class="coord-value">--</span></div>
+                        <div><span class="position-label">纬度:</span> <span id="latitude" class="coord-value">--</span></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row">
+            <div class="col-12">
+                <div class="controls-container">
+                    <div class="row">
+                        <div class="col-12">
+                            <div class="control-label">时间滑动控制 (小时):</div>
+                            <div id="time-slider"></div>
+                            <div id="time-display">当前时间: <span id="current-time">00:00:00</span></div>
+                        </div>
+                    </div>
+                    <div class="row mt-3">
+                        <div class="col-6">
+                            <button id="play-button" class="btn btn-primary">播放轨迹</button>
+                            <button id="pause-button" class="btn btn-secondary" disabled>暂停</button>
+                            <div class="speed-controls">
+                                <div class="speed-label">播放速度:</div>
+                                <div class="speed-selector">
+                                    <div class="speed-option" data-speed="1">慢速</div>
+                                    <div class="speed-option" data-speed="5">中速</div>
+                                    <div class="speed-option active" data-speed="20">快速</div>
+                                </div>
+                            </div>
+                            <div id="playback-info" class="playback-info" style="display:none">
+                                播放进度: <span id="playback-progress">0</span>/<span id="playback-total">0</span> 点
+                            </div>
+                        </div>
+                        <div class="col-6 text-end">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="satellite-toggle" checked>
+                                <label class="form-check-label" for="satellite-toggle">卫星地图</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row mt-3">
+                        <div class="col-12">
+                            <div id="status-message"></div>
+                            <div class="debug-info" id="debug-info"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="playback-info" style="display:block; margin-bottom: 10px;">
+            <div><span class="fw-bold">总轨迹时长:</span> <span id="total-duration">0</span></div>
+            <div><span class="fw-bold">轨迹记录:</span> <span id="playback-progress">0</span>/<span id="playback-total">0</span> 个数据点</div>
+            <div><span class="fw-bold">真实时间:</span> <span id="real-time">--:--:--</span></div>
+        </div>
+    </div>
+
+    <!-- JavaScript Libraries -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script src="https://cdn.jsdelivr.net/npm/nouislider@14.6.3/distribute/nouislider.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chroma-js@2.4.2/chroma.min.js"></script>
+    
+    <script>
+        // --- Configuration ---
+        const GAP_THRESHOLD_SECONDS = 30; // 30 seconds gap defines a new segment
+        let animationSpeed = 20; // Default playback speed multiplier
+        let animationIntervalHandle; // Stores the setInterval handle
+        let updateSliderDuringPlayback = false; // Whether to update slider during playback (can be toggled)
+        
+        // --- Global State ---
+        let trackData = [];
+        let preProcessedData = []; // Sorted, { hour, lat, lon, time, create_time, timestamp_ms }
+        let dataSegments = []; // Array of { startIndex, endIndex, startTime, endTime }
+        let hourRange = [8, 18]; // Default slider range if no data
+        let colorScale = chroma.scale(['blue', 'green', 'yellow', 'red']);
+        let slider;
+        let map;
+        let osmLayer, satelliteLayer;
+        let currentTrackLines = [];
+        let currentPoint;
+        let currentPointAdded = false;
+        let hasValidData = false;
+        let mapInitialized = false;
+        let currentPlaybackIndex = 0; // Track which data point we're currently showing
+        let lastRenderTime = 0; // Track last render time for FPS throttling
+        
+        // --- Initialization ---
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log("Page loaded, initializing visualization...");
+            
+            try {
+                parseTrackData();
+                initializeMap();
+                processAndSegmentData();
+                
+                if (hasValidData) {
+                    initializeTimeDisplay();
+                    initializeSlider();
+                    setupEventListeners();
+                    
+                    // Initial render at the first point
+                    if (preProcessedData.length > 0) {
+                        // Render first point
+                        currentPlaybackIndex = 0;
+                        renderPoint(preProcessedData[0]);
+                        
+                        // Setup debug and statistics info
+                        document.getElementById('debug-info').innerHTML = 
+                            `总数据点: ${preProcessedData.length}个, 时间范围: ${formatTimeFromDate(preProcessedData[0].time)} - ${formatTimeFromDate(preProcessedData[preProcessedData.length-1].time)}, 采样粒度: ${preProcessedData.length > 1 ? calculateSamplingRate() : '未知'}`;
+                        document.getElementById('debug-info').style.display = 'block';
+                        
+                        // Set playback total and duration info
+                        document.getElementById('playback-total').textContent = preProcessedData.length;
+                        document.getElementById('total-duration').textContent = formatDuration(
+                            preProcessedData[preProcessedData.length-1].timestamp_ms - preProcessedData[0].timestamp_ms
+                        );
+                        
+                        // Initialize real-time display
+                        updateRealTimeDisplay(preProcessedData[0].time);
+                    }
+                } else {
+                    document.getElementById('play-button').disabled = true;
+                    map.setView([25.5, 119.8], 10);
+                    document.getElementById('time-slider').innerHTML = 
+                        '<div class="alert alert-warning">没有可用的轨迹数据</div>';
+                }
+            } catch (error) {
+                console.error("初始化失败:", error);
+                setMessage(`初始化失败: ${error.message}`, 'danger');
+            }
+        });
+        
+        // --- Data Processing Functions ---
+        function parseTrackData() {
+            try {
+                trackData = JSON.parse('{{ track_data|tojson|safe }}');
+                console.log("Raw track data loaded: " + trackData.length + " points");
+            } catch (e) {
+                console.error("Failed to parse track data JSON:", e);
+                setMessage('轨迹数据解析失败: ' + e.message, 'warning');
+                throw e; // Re-throw to stop initialization
+            }
+        }
+
+        function processAndSegmentData() {
+            if (!trackData || trackData.length === 0) return;
+            
+            // 1. Filter, Parse, and Sort Data
+            const tempProcessed = [];
+            
+            trackData.forEach(point => {
+                const lat = parseFloat(point.lat);
+                const lon = parseFloat(point.lon);
+                
+                if (isNaN(lat) || isNaN(lon) || lat === 0 || lon === 0) return; // Skip invalid points
+                
+                let timeStr = point.create_time || point.timestamp;
+                if (!timeStr) return; // Skip points without time
+                
+                let timestamp = parseTimestamp(timeStr);
+                if (isNaN(timestamp.getTime())) return; // Skip invalid timestamps
+                
+                const pointHour = timestamp.getHours() + timestamp.getMinutes()/60 + timestamp.getSeconds()/3600;
+                const timestamp_ms = timestamp.getTime();
+                
+                tempProcessed.push({
+                    hour: pointHour,
+                    lat: lat,
+                    lon: lon,
+                    time: timestamp,
+                    create_time: timeStr,
+                    timestamp_ms: timestamp_ms
+                });
+            });
+            
+            if (tempProcessed.length === 0) {
+                setMessage('未找到有效的位置数据点 (需要有效的经纬度和时间)', 'warning');
+                return;
+            }
+            
+            // Sort by timestamp
+            preProcessedData = tempProcessed.sort((a, b) => a.timestamp_ms - b.timestamp_ms);
+            hasValidData = true;
+            console.log("Pre-processed data points: " + preProcessedData.length);
+            
+            // 2. Determine overall hour range and color scale
+            if (preProcessedData.length > 0) {
+                const firstPoint = preProcessedData[0];
+                const lastPoint = preProcessedData[preProcessedData.length - 1];
+                
+                // Set hour range based on actual data time span
+                hourRange = [firstPoint.hour, lastPoint.hour];
+                
+                // Create color scale that gradients across the entire time span
+                colorScale = chroma.scale(['blue', 'green', 'yellow', 'red']).domain(hourRange);
+                
+                // 3. Segment data based on time gaps
+                identifyTimeGaps();
+                
+                // 4. Calculate and log data statistics
+                calculateDataStatistics();
+            }
+        }
+
+        function identifyTimeGaps() {
+            if (preProcessedData.length < 2) {
+                // If only one point, create a single segment
+                if (preProcessedData.length === 1) {
+                    dataSegments.push({
+                        startIndex: 0,
+                        endIndex: 0,
+                        startTime: preProcessedData[0].timestamp_ms,
+                        endTime: preProcessedData[0].timestamp_ms,
+                        count: 1
+                    });
+                }
+                return;
+            }
+            
+            // Look for time gaps
+            let currentSegment = {
+                startIndex: 0,
+                endIndex: 0,
+                startTime: preProcessedData[0].timestamp_ms,
+                endTime: preProcessedData[0].timestamp_ms,
+                count: 1
+            };
+            
+            for (let i = 1; i < preProcessedData.length; i++) {
+                const currentPoint = preProcessedData[i];
+                const prevPoint = preProcessedData[i-1];
+                const timeDiff = currentPoint.timestamp_ms - prevPoint.timestamp_ms;
+                
+                // Check if time difference exceeds threshold (indicating a gap)
+                if (timeDiff > GAP_THRESHOLD_SECONDS * 1000) {
+                    // Finalize current segment
+                    currentSegment.endIndex = i-1;
+                    currentSegment.endTime = prevPoint.timestamp_ms;
+                    currentSegment.count = currentSegment.endIndex - currentSegment.startIndex + 1;
+                    dataSegments.push(currentSegment);
+                    
+                    // Start new segment
+                    currentSegment = {
+                        startIndex: i,
+                        endIndex: i,
+                        startTime: currentPoint.timestamp_ms,
+                        endTime: currentPoint.timestamp_ms,
+                        count: 1
+                    };
+                } else {
+                    // Update current segment
+                    currentSegment.endIndex = i;
+                    currentSegment.endTime = currentPoint.timestamp_ms;
+                    currentSegment.count++;
+                }
+            }
+            
+            // Add the final segment
+            dataSegments.push(currentSegment);
+        }
+
+        function calculateDataStatistics() {
+            if (preProcessedData.length < 2) return;
+            
+            // Calculate time differences between consecutive points
+            const timeDiffs = [];
+            for (let i = 1; i < preProcessedData.length; i++) {
+                const diff = preProcessedData[i].timestamp_ms - preProcessedData[i-1].timestamp_ms;
+                timeDiffs.push(diff);
+            }
+            
+            // Calculate statistics
+            const totalTimeDiff = timeDiffs.reduce((sum, diff) => sum + diff, 0);
+            const avgTimeDiff = totalTimeDiff / timeDiffs.length;
+            
+            // Sort for median calculation
+            timeDiffs.sort((a, b) => a - b);
+            const medianTimeDiff = timeDiffs[Math.floor(timeDiffs.length / 2)];
+            
+            // Find min and max
+            const minTimeDiff = timeDiffs[0];
+            const maxTimeDiff = timeDiffs[timeDiffs.length - 1];
+            
+            console.log(`Data statistics:
+                - Points: ${preProcessedData.length}
+                - Segments: ${dataSegments.length}
+                - Time span: ${formatDuration(preProcessedData[preProcessedData.length-1].timestamp_ms - preProcessedData[0].timestamp_ms)}
+                - Avg interval: ${(avgTimeDiff/1000).toFixed(2)}s
+                - Median interval: ${(medianTimeDiff/1000).toFixed(2)}s
+                - Min interval: ${(minTimeDiff/1000).toFixed(2)}s
+                - Max interval: ${(maxTimeDiff/1000).toFixed(2)}s`);
+            
+            // Update UI with statistics
+            setMessage(`数据: ${preProcessedData.length}个点, ${dataSegments.length}个连续片段, 
+                        时长: ${formatDuration(preProcessedData[preProcessedData.length-1].timestamp_ms - preProcessedData[0].timestamp_ms)}, 
+                        平均采样间隔: ${(avgTimeDiff/1000).toFixed(1)}秒`, 'info');
+        }
+
+        function calculateSamplingRate() {
+            if (preProcessedData.length < 2) return "未知";
+            
+            // Calculate average time between points
+            const firstPoint = preProcessedData[0];
+            const lastPoint = preProcessedData[preProcessedData.length - 1];
+            const timeSpanMs = lastPoint.timestamp_ms - firstPoint.timestamp_ms;
+            const avgIntervalMs = timeSpanMs / (preProcessedData.length - 1);
+            
+            // Format based on magnitude
+            if (avgIntervalMs < 1000) {
+                return `${avgIntervalMs.toFixed(0)}毫秒/点`;
+            } else if (avgIntervalMs < 60000) {
+                return `${(avgIntervalMs / 1000).toFixed(1)}秒/点`;
+            } else {
+                return `${(avgIntervalMs / 60000).toFixed(1)}分钟/点`;
+            }
+        }
+
+        function parseTimestamp(timeStr) {
+            // First try standard JavaScript Date parsing
+            let timestamp = new Date(timeStr);
+            
+            // If that fails, try various formats
+            if (isNaN(timestamp.getTime())) {
+                // Try YYYY-MM-DD HH:MM:SS format
+                const parts = timeStr.split(/[- :]/);
+                if (parts.length >= 6) {
+                    // Note: JavaScript months are 0-based
+                    timestamp = new Date(
+                        parseInt(parts[0]), parseInt(parts[1])-1, parseInt(parts[2]), 
+                        parseInt(parts[3]), parseInt(parts[4]), parseInt(parts[5])
+                    );
+                }
+            }
+            
+            return timestamp;
+        }
+
+        function formatDuration(ms) {
+            const totalSeconds = Math.floor(ms / 1000);
+            const hours = Math.floor(totalSeconds / 3600);
+            const minutes = Math.floor((totalSeconds % 3600) / 60);
+            const seconds = totalSeconds % 60;
+            
+            return `${hours}小时${minutes}分${seconds}秒`;
+        }
+        
+        // --- Map Initialization & Handling ---
+        function initializeMap() {
+            map = L.map('map');
+            
+            // Base map layers
+            osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19, attribution: '© OpenStreetMap contributors'
+            });
+            
+            satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+                maxZoom: 19, attribution: 'Tiles &copy; Esri'
+            });
+            
+            // Add satellite layer by default
+            satelliteLayer.addTo(map);
+            
+            // Create marker but don't add to map yet
+            currentPoint = L.circleMarker([0, 0], {
+                radius: 8, 
+                color: 'red', 
+                fillColor: '#f03', 
+                fillOpacity: 0.8,
+                weight: 2
+            });
+        }
+
+        function updatePositionInfo(lat, lon) {
+            if (!lat || !lon || isNaN(lat) || isNaN(lon)) {
+                document.getElementById('longitude').textContent = '--';
+                document.getElementById('latitude').textContent = '--';
+                return;
+            }
+            
+            document.getElementById('longitude').textContent = lon.toFixed(6);
+            document.getElementById('latitude').textContent = lat.toFixed(6);
+        }
+
+        function clearTrackLines() {
+            currentTrackLines.forEach(line => {
+                if (map.hasLayer(line)) {
+                    map.removeLayer(line);
+                }
+            });
+            currentTrackLines = [];
+        }
+        
+         // --- Slider Initialization & Handling ---
+        function initializeSlider() {
+            if (!hasValidData || preProcessedData.length === 0) return;
+            
+            slider = document.getElementById('time-slider');
+            if (!slider) return;
+            
+            try {
+                // Clean up any existing slider
+                if (slider.noUiSlider) {
+                    slider.noUiSlider.destroy();
+                }
+                
+                // Create slider markers at segment boundaries
+                const pipValues = [];
+                
+                // Always include range bounds
+                pipValues.push(hourRange[0]);
+                pipValues.push(hourRange[1]);
+                
+                // Add segment boundaries
+                dataSegments.forEach(segment => {
+                    const startPoint = preProcessedData[segment.startIndex];
+                    const endPoint = preProcessedData[segment.endIndex];
+                    if (startPoint && endPoint) {
+                        pipValues.push(startPoint.hour);
+                        pipValues.push(endPoint.hour);
+                    }
+                });
+                
+                // Remove duplicates and sort
+                const uniquePipValues = [...new Set(pipValues)].sort((a, b) => a - b);
+                
+                // Create slider
+                noUiSlider.create(slider, {
+                    start: hourRange[0],
+                    connect: [true, false],
+                    range: {
+                        'min': hourRange[0],
+                        'max': hourRange[1]
+                    },
+                    step: 0.00001, // Very small step for precise control
+                    tooltips: true,
+                    format: {
+                        to: formatHourValue,
+                        from: parseFormattedHour
+                    },
+                    pips: {
+                        mode: 'values',
+                        values: uniquePipValues,
+                        density: -1,
+                        format: {
+                            to: formatHourValue
+                        }
+                    }
+                });
+                
+                // Add update event
+                slider.noUiSlider.on('update', function(values, handle) {
+                    const formattedTime = values[handle];
+                    document.getElementById('current-time').textContent = formattedTime;
+                    
+                    // Don't trigger visualization during playback (handled directly)
+                    if (!document.getElementById('play-button').disabled) {
+                        const hourValue = parseFormattedHour(formattedTime);
+                        if (!isNaN(hourValue)) {
+                            findAndRenderPointAtTime(hourValue);
+                        }
+                    }
+                });
+                
+            } catch (e) {
+                console.error("Failed to initialize slider:", e);
+                setMessage('初始化时间滑动条失败: ' + e.message, 'danger');
+            }
+        }
+        
+        function findAndRenderPointAtTime(timeHour) {
+            // Validate input
+            if (isNaN(timeHour) || !preProcessedData || preProcessedData.length === 0) {
+                console.warn("Invalid time or no preprocessed data available");
+                return;
+            }
+            
+            try {
+                // Find the closest point to the requested time
+                let bestIndex = 0;
+                let minDiff = Infinity;
+                
+                for (let i = 0; i < preProcessedData.length; i++) {
+                    if (!preProcessedData[i].hour && preProcessedData[i].hour !== 0) {
+                        console.warn(`Missing hour value for point at index ${i}`);
+                        continue;
+                    }
+                    
+                    const diff = Math.abs(preProcessedData[i].hour - timeHour);
+                    if (diff < minDiff) {
+                        minDiff = diff;
+                        bestIndex = i;
+                    }
+                    // If we've passed the time already and points are sorted,
+                    // we can stop searching
+                    if (preProcessedData[i].hour > timeHour && i > 0) {
+                        break;
+                    }
+                }
+                
+                // Update current playback index
+                currentPlaybackIndex = bestIndex;
+                
+                // Update progress display
+                document.getElementById('playback-progress').textContent = currentPlaybackIndex + 1;
+                
+                // Render the point
+                renderPoint(preProcessedData[bestIndex]);
+            } catch (error) {
+                console.error("Error finding and rendering point:", error);
+                setMessage(`时间查找错误: ${error.message}`, 'warning');
+            }
+        }
+
+        function renderVisualization(pointsToRender) {
+            if (!pointsToRender || pointsToRender.length === 0) {
+                clearTrackLines();
+                return;
+            }
+            
+            // Performance optimization: throttle renders
+            const now = Date.now();
+            if (now - lastRenderTime < 16 && pointsToRender.length > 100) { // ~60fps
+                return; // Skip this render if too soon after the last one
+            }
+            lastRenderTime = now;
+            
+            // Clear previous track lines
+            clearTrackLines();
+            
+            // Extract coordinates
+            const coordinates = pointsToRender.map(p => [p.lat, p.lon]);
+            
+            // Fit map to bounds on first visualization
+            if (!mapInitialized && coordinates.length > 0) {
+                try {
+                    map.fitBounds(coordinates);
+                    mapInitialized = true;
+                } catch (e) {
+                    console.error("Error fitting map bounds:", e);
+                }
+            }
+            
+            // Optimization for large datasets - draw track segments
+            const segmentCount = coordinates.length - 1;
+            
+            if (segmentCount > 0) {
+                // Adaptive step size based on dataset size
+                const stepSize = Math.max(1, Math.floor(segmentCount / 200));
+                
+                // Create and store track line segments
+                for (let i = 0; i < segmentCount; i += stepSize) {
+                    const nextIdx = Math.min(i + stepSize, segmentCount);
+                    
+                    // Get color based on time (hour)
+                    const pointHour = pointsToRender[i].hour;
+                    const color = colorScale(pointHour).hex();
+                    
+                    // Create polyline and add to map
+                    const line = L.polyline([coordinates[i], coordinates[nextIdx]], {
+                        color: color,
+                        weight: 3,
+                        opacity: 0.8,
+                        // Add smooth animation for better visual effect
+                        dashArray: '5, 5',
+                        dashOffset: '0'
+                    }).addTo(map);
+                    
+                    currentTrackLines.push(line);
+                }
+            }
+        }
+
+        // --- NEW DIRECT POINT-BASED PLAYBACK LOGIC ---
+        function startPlayback() {
+            if (!hasValidData || preProcessedData.length < 2) {
+                setMessage("无可播放的轨迹数据", "warning");
+                return;
+            }
+            
+            document.getElementById('play-button').disabled = true;
+            document.getElementById('pause-button').disabled = false;
+            
+            // Start from the current index, or 0 if we're at the end
+            if (currentPlaybackIndex >= preProcessedData.length - 1) {
+                currentPlaybackIndex = 0;
+            }
+            
+            // Calculate how many points to skip based on speed
+            // Higher speed = more points skipped per frame
+            const pointSkipCount = Math.max(1, Math.round(animationSpeed / 5));
+            const baseInterval = 50; // Base animation interval in ms (lower = faster)
+            
+            console.log(`Starting playback from index ${currentPlaybackIndex}/${preProcessedData.length-1}, skip: ${pointSkipCount}, interval: ${baseInterval}ms`);
+            
+            // Start animation directly using points instead of time
+            function stepAnimation() {
+                // Safety check
+                if (currentPlaybackIndex >= preProcessedData.length) {
+                    stopPlayback();
+                    return;
+                }
+                
+                // Get current point
+                const currentPoint = preProcessedData[currentPlaybackIndex];
+                
+                // Update UI directly (without going through the slider)
+                renderPoint(currentPoint);
+                
+                // Also update slider to keep it in sync
+                // But don't use the slider's update event to avoid infinite loop
+                if (slider && slider.noUiSlider) {
+                    try {
+                        // Temporarily remove event listener
+                        const sliderElement = document.getElementById('time-slider');
+                        const originalListeners = sliderElement.noUiSlider.off('update');
+                        
+                        // Update slider position
+                        sliderElement.noUiSlider.set(currentPoint.hour);
+                        
+                        // Update time display
+                        document.getElementById('current-time').textContent = formatHourValue(currentPoint.hour);
+                        
+                        // Restore listeners
+                        sliderElement.noUiSlider.on('update', originalListeners[0]);
+                    } catch (e) {
+                        console.error("Error updating slider:", e);
+                        // Continue with playback even if slider update fails
+                    }
+                }
+                
+                // Update progress display
+                document.getElementById('playback-progress').textContent = currentPlaybackIndex + 1;
+                
+                // Calculate next index with skipping
+                currentPlaybackIndex = Math.min(currentPlaybackIndex + pointSkipCount, preProcessedData.length - 1);
+                
+                // Continue animation if we haven't reached the end
+                if (currentPlaybackIndex < preProcessedData.length - 1) {
+                    animationIntervalHandle = setTimeout(stepAnimation, baseInterval);
+                } else {
+                    stopPlayback();
+                }
+            }
+            
+            // Start the animation
+            clearTimeout(animationIntervalHandle);
+            animationIntervalHandle = setTimeout(stepAnimation, 0); // Start immediately
+        }
+
+        function stopPlayback() {
+            clearTimeout(animationIntervalHandle);
+            document.getElementById('play-button').disabled = false;
+            document.getElementById('pause-button').disabled = true;
+        }
+
+        // Render a single point and its track history
+        function renderPoint(point) {
+            if (!point) return;
+            
+            // Find the index of this point
+            const pointIndex = preProcessedData.findIndex(p => 
+                p.time.getTime() === point.time.getTime() && 
+                p.lat === point.lat && 
+                p.lon === point.lon);
+            
+            if (pointIndex === -1) return;
+            
+            // Get all points up to this one
+            const pointsToRender = preProcessedData.slice(0, pointIndex + 1);
+            
+            // Update real-time display with this point's actual timestamp
+            updateRealTimeDisplay(point.time);
+            
+            // Render the track
+            renderVisualization(pointsToRender);
+            
+            // Update the current point directly
+            updatePositionInfo(point.lat, point.lon);
+            currentPoint.setLatLng([point.lat, point.lon]);
+            if (!currentPointAdded) {
+                currentPoint.addTo(map);
+                currentPointAdded = true;
+            }
+        }
+        
+        // --- UI Event Listeners ---
+        function setupEventListeners() {
+            // Play/pause buttons
+            document.getElementById('play-button').addEventListener('click', startPlayback);
+            document.getElementById('pause-button').addEventListener('click', stopPlayback);
+            
+            // Speed controls
+            document.querySelectorAll('.speed-option').forEach(option => {
+                option.addEventListener('click', function() {
+                    // Update UI
+                    document.querySelectorAll('.speed-option').forEach(el => 
+                        el.classList.remove('active'));
+                    this.classList.add('active');
+                    
+                    // Update speed value
+                    animationSpeed = parseFloat(this.getAttribute('data-speed'));
+                    
+                    // Restart playback if currently playing
+                    const isPlaying = !document.getElementById('play-button').disabled;
+                    if (isPlaying) {
+                        stopPlayback();
+                        startPlayback();
+                    }
+                });
+            });
+            
+            // Map layer toggle
+            document.getElementById('satellite-toggle').addEventListener('change', function() {
+                if (this.checked) {
+                    map.removeLayer(osmLayer);
+                    satelliteLayer.addTo(map);
+                } else {
+                    map.removeLayer(satelliteLayer);
+                    osmLayer.addTo(map);
+                }
+            });
+            
+            // Keyboard shortcuts
+            document.addEventListener('keydown', function(event) {
+                if (event.code === 'Space') {
+                    // Toggle play/pause with spacebar
+                    if (document.getElementById('play-button').disabled) {
+                        stopPlayback();
+                    } else {
+                        startPlayback();
+                    }
+                    event.preventDefault();
+                }
+            });
+        }
+        
+        // --- Utility Functions ---
+        function formatHourValue(value) {
+            if (value === undefined || value === null || isNaN(value)) return "00:00:00";
+            
+            // Clamp value to valid range
+            value = Math.max(0, Math.min(24, value));
+            
+            // Calculate hours, minutes, seconds
+            const hours = Math.floor(value);
+            const minutes = Math.floor((value - hours) * 60);
+            const seconds = Math.floor(((value - hours) * 60 - minutes) * 60);
+            
+            // Format with leading zeros
+            return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        }
+
+        function parseFormattedHour(value) {
+            if (!value || typeof value !== 'string') return NaN;
+            
+            // Parse HH:MM:SS format
+            const parts = value.split(':').map(part => parseInt(part, 10));
+            if (parts.length < 3 || parts.some(isNaN)) return NaN;
+            
+            // Convert to decimal hours
+            return parts[0] + parts[1]/60 + parts[2]/3600;
+        }
+
+        function setMessage(message, type = 'info') {
+            const statusEl = document.getElementById('status-message');
+            if (statusEl) {
+                statusEl.innerHTML = `<div class="alert alert-${type}">${message}</div>`;
+            }
+        }
+
+        function initializeTimeDisplay() {
+            // Set initial time display
+            document.getElementById('current-time').textContent = "00:00:00";
+        }
+
+        // Update real-time display with actual timestamp
+        function updateRealTimeDisplay(timestamp) {
+            if (!timestamp) {
+                document.getElementById('real-time').textContent = "--:--:--";
+                return;
+            }
+            
+            document.getElementById('real-time').textContent = formatTimeFromDate(timestamp);
+        }
+
+        // Format a Date object to display time only
+        function formatTimeFromDate(date) {
+            if (!date || !(date instanceof Date) || isNaN(date.getTime())) return "--:--:--";
+            
+            return date.toTimeString().substring(0, 8); // Extract HH:MM:SS
+        }
+    </script>
+</body>
+</html> 

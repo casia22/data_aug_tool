@@ -1,0 +1,3 @@
+nohup: ignoring input
+  File "app.py", line 7
+SyntaxError: Non-ASCII character '\xe7' in file app.py on line 7, but no encoding declared; see http://www.python.org/peps/pep-0263.html for details
